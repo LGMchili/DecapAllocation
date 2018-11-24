@@ -147,11 +147,26 @@ def calculateCost(seq, module):
     rect = min(temp, key=lambda x: x[0] * x[1])
     return rect[0] * rect[1]
 
-def op1(E):
+def getPossibleMove(E):
+    pm_op1, pm_op3 = [], []
+    for i in range(len(E) - 1):
+        if(E[i].isdigit() and E[i+1].isdigit()):
+            pm_op1.append(i)
+        if(E[i].isdigit() and not E[i+1].isdigit() and 2*getBallot(E, i+1) < i and E[i+1] != E[i-1]):
+            pm_op3.append(i)
+        elif(not E[i].isdigit() and E[i+1].isdigit()):
+            if(i == len(E) - 2 or E[i] != E[i+2]):
+                pm_op3.append(i)
+    return pm_op1, pm_op3
+
+def op1(E, pm):
     e = E.copy()
-    for i in range(len(e)):
-        if(e[i].isdigit() and e[i+1].isdigit()):
-            e[i], e[i+1] = e[i+1], e[i]
+    k = random.randint(0, len(pm) - 1)
+    i = pm[k]
+    e[i], e[i+1] = e[i+1], e[i]
+    # for i in range(len(e)):
+    #     if(e[i].isdigit() and e[i+1].isdigit()):
+    #         e[i], e[i+1] = e[i+1], e[i]
     return e
 
 def op2(E):
@@ -166,21 +181,24 @@ def op2(E):
             e[k] = 'H'
     return e
 
-def op3(E):
+def op3(E, pm):
+    if(not pm):
+        return E
     done = False
     e = E.copy()
-    # while(not done):
-        # i = random.randint(0, len(e)-2)
-    for i in range(len(e) - 1):
-        if(e[i].isdigit() and not e[i+1].isdigit() and 2*getBallot(E, i+1) < i and e[i+1] != e[i-1]):
-            done = True
-            e[i], e[i+1] = e[i+1], e[i]
-            break
-        elif(not e[i].isdigit() and e[i+1].isdigit()):
-            if(i == len(e) - 2 or e[i] != e[i+2]):
-                done = True
-                e[i], e[i+1] = e[i+1], e[i]
-                break
+    k = random.randint(0, len(pm) - 1)
+    i = pm[k]
+    e[i], e[i+1] = e[i+1], e[i]
+    # for i in range(len(e) - 1):
+    #     if(e[i].isdigit() and not e[i+1].isdigit() and 2*getBallot(E, i+1) < i and e[i+1] != e[i-1]):
+    #         done = True
+    #         e[i], e[i+1] = e[i+1], e[i]
+    #         break
+    #     elif(not e[i].isdigit() and e[i+1].isdigit()):
+    #         if(i == len(e) - 2 or e[i] != e[i+2]):
+    #             done = True
+    #             e[i], e[i+1] = e[i+1], e[i]
+    #             break
     # print(''.join(E))
     # print(''.join(e))
     return e
@@ -204,9 +222,10 @@ def getChain(E):
     return chain
 
 def getNeighborhoodStructure(E, dice):
+    pm_op1, pm_op3 = getPossibleMove(E)
     if(dice == 1):
         # op1
-        newE = op1(E)
+        newE = op1(E, pm_op1)
         # print(1, E, newE)
     elif(dice == 2):
         # op2
@@ -214,8 +233,12 @@ def getNeighborhoodStructure(E, dice):
         # print(2, E, newE)
     else:
         # op3
-        newE = op3(E)
+        newE = op3(E, pm_op3)
         # print(3, E, newE)
+
+    # print(pm_op1, pm_op3, 'dice:', dice)
+    # print(''.join(newE))
+
     # E1, E2, E3 = op1(E), op2(E, chain), op3(E)
     # cost = [calculateCost(E1, modules), calculateCost(E2, modules), calculateCost(E3, modules)]
     # # print(cost)
@@ -228,13 +251,16 @@ def genInitialSolution(module):
     E = []
     i = 0
     # initial solution
-    for k in module.keys():
+    keys = [*module.keys()]
+    random.shuffle(keys)
+    for k in keys:
         E.append(k)
         if(i >= 1):
-            if(random.uniform(0, 1) > 0.5):
-                E.append('V')
-            else:
-                E.append('H')
+            E.append('V')
+            # if(random.uniform(0, 1) > 0.5):
+            #     E.append('V')
+            # else:
+            #     E.append('H')
         i += 1
     return E
 
@@ -245,7 +271,7 @@ def sa(module):
     Ebest = E
     best_cost = calculateCost(E, module)
     iter = 0
-    T = 1000000 # initial temperature
+    T = 1000000000 # initial temperature
     r = 0.85 # reduce ratio
     epsilon = 1 # minimal temperature
     max_iteration = 5*l # max iterator at each time
@@ -277,9 +303,25 @@ def sa(module):
 def mergeWhiteSpace():
     pass
 
+def decode(seq):
+    l = len(seq)
+    result = []
+    temp = ''
+    i = 0
+    for j in range(l):
+        if(seq[j].isdigit()):
+            temp += seq[j]
+            i += 1
+            if(i == 2):
+                result.append(temp)
+                i = 0
+                temp = ''
+        else:
+            result.append(seq[j])
+    return result
 # fp = ['1','2','H','3','4','H','5','H','V']
 if __name__ == '__main__':
-    with open('./ami49.txt') as file:
+    with open('./ami33.txt') as file:
         # fig = plt.figure(figsize=(12,9))
         # ax = fig.add_subplot(1,1,1)
         # ax.set_ylim([0,100])
@@ -295,6 +337,7 @@ if __name__ == '__main__':
                 cords = line.split()[1:]
                 width = float(cords[0])
                 height = float(cords[3])
+                # +11 in case of name of two combined module may have same name with a original module
                 mappedName = str(len(nameMap) + 11)
                 nameMap[mappedName] = name
                 modules[mappedName] = [width, height]
@@ -307,6 +350,29 @@ if __name__ == '__main__':
     fp, y = sa(modules)
     x = range(len(y))
     plt.plot(x, y)
+    plt.xlabel("iteration")
+    plt.ylabel("cost")
     print('result:',''.join(fp))
     plotLayout(fp, modules)
     plt.show()
+    with open('./out.txt', 'w') as f:
+        for item in fp:
+            if(item.isdigit()):
+                f.write("%s " % nameMap[item])
+            else:
+                f.write("%s " % item)
+# ami49
+# 601332H4053H30H58V1842HV3357H55HV503951HV2937V4754VHVHV3456H12V31HV4319V3836V2022V52HVH592146V1528VHVH17492326HV4124VHV27V48V11HVH141625H4535V44H
+# best cost: 104118336.0
+# ami33
+# 172830V24H3426VH2933H32VH13H38H4236H12HVH1639V1435VH1519HV1841H27H20HVH114022HV3743V31HV25V2123HV44HV
+# best cost: 4548376.0
+# xerox
+# 2119181711H12HVH2015HV1413H16HVH
+# best cost: 61446196.0
+# apte
+# 201518H1916H12H17HV1314H11VHV
+# best cost: 149090000.0
+# hp
+# 121814HV19V17V2221V16V1513V1120VHVH
+# best cost: 90724872.0
