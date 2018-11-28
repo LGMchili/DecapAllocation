@@ -11,11 +11,18 @@ def readDesign(file):
     with open(file) as file:
         nameMap = {}
         modules = {}
+        load = {}
         for line in file:
             line = line.strip()
             line = re.sub(';', '', line)
+            words = line.split()
             if(line.startswith('MODULE')):
                 name = line.split()[1]
+                load[name] = 0
+            if('CURRENT' in words):
+                index = words.index('CURRENT')
+                current = float(words[index + 1])
+                load[name] += current
             if(line.startswith('DIMENSIONS')):
                 cords = line.split()[1:]
                 width = float(cords[0])
@@ -24,7 +31,7 @@ def readDesign(file):
                 mappedName = str(len(nameMap) + 11)
                 nameMap[mappedName] = name
                 modules[mappedName] = [width, height]
-    return modules, nameMap
+    return modules, nameMap, load
 
 def rotateModules(module):
     # add rotated rects to list
@@ -346,7 +353,7 @@ def decode(seq):
     return result
 # fp = ['1','2','H','3','4','H','5','H','V']
 if __name__ == '__main__':
-    modules, nameMap = readDesign('./xerox.txt')
+    modules, nameMap, load = readDesign('./ami33.txt')
     # print(nameMap)
     # print(modules)
     # modules = {'1':[4,6], '2':[4,4], '3':[4,3], '4':[4,4], '5':[4,3]} # rect in (width, height), for test only
@@ -371,10 +378,10 @@ if __name__ == '__main__':
 # 172830V24H3426VH2933H32VH13H38H4236H12HVH1639V1435VH1519HV1841H27H20HVH114022HV3743V31HV25V2123HV44HV
 # best cost: 4548376.0
 # xerox
-# 211514V1917H16H1218VH1311H20HVHV
+# 21161811H12HV13H1514HV192017VHVH
 # best cost: 59246880.0
 # apte
-# 201518H1916H12H17HV1314H11VHV
+# 2015181119HHH1617121314HHHHVV
 # best cost: 149090000.0
 # hp
 # 121814HV19V17V2221V16V1513V1120VHVH
