@@ -143,6 +143,140 @@ def updateLayout(module, demand, alpha, layoutX, layoutY, dmd):
                 module[n][1] = (module[n][1][0] + Bws, module[n][1][1])
     return newLayoutX, newLayoutY
 
+def getPgDimension(pwrPin):
+    """
+    get the rectangle size of pg net
+    """
+    pins = []
+    for ps in pwrPin.values():
+        for p in ps:
+            pins.append(p)
+    minHeight, minWidth = float('inf'), float('inf')
+    pgX, pgY = pins[0][0], pins[0][1]
+    for i in range(1, len(pins)):
+        if(pins[i-1][1] != pins[i][1]):
+            minHeight = min(minHeight, abs(pins[i-1][1] - pins[i][1]))
+            pgY = max(pgY, pins[i][1])
+        if(pins[i-1][0] != pins[i][0]):
+            minWidth = min(minWidth, abs(pins[i-1][0] - pins[i][0]))
+            pgX = max(pgX, pins[i][0])
+    return minWidth, minHeight, pgX, pgY
+
+def mergePin(pwrPin):
+    pins = {}
+    result = []
+    for ps in pwrPin.values():
+        for p in ps:
+            if(p[0] in pins):
+                if(p[1] in pins[p[0]]):
+                    pins[p[0]][p[1]] += p[2]
+                else:
+                    pins[p[0]][p[1]] = p[2]
+            else:
+                pins[p[0]] = {p[1]:p[2]}
+    for k1 in pins.keys():
+        for k2 in pins[k1].keys():
+            result.append([k1, k2, pins[k1][k2]])
+    return result
+
+def addCurrentSource(file, pwrPin, nodeNumX, nodeNumY, dimension):
+    layoutX, layoutY = dimension[0], dimension[1]
+    pitchX, pitchY = layoutX / nodeNumX, layoutY / nodeNumY
+    num = 0
+    # pins = mergePin(pwrPin)
+    # print(layoutX, layoutY)
+    file.write('*load\n')
+    decapBudget = getCapBudget(pwrPin)
+    for key in pwrPin.keys():
+        ps = pwrPin[key]
+        caps = decapBudget[key]
+        # TODO: get decap demand for each module here
+        for i in range(len(ps)):
+            x, y  = int(ps[i][0] // pitchX), int((ps[i][1] // pitchY))
+            c = caps[i]
+            # print(x, y, ',', p[0], p[1])
+            node = 'n' + str(x * nodeNumX + y)
+            curr = 'i' + str(num) + ' ' + node + ' ' + 'gnd' + ' ' + 'pwl ' + \
+            '.35e-6 0 .4e-6 ' + str(ps[i][2]) + ' .45e-6 0'
+            cap = 'c' + str(num) + ' ' + node + ' ' + 'gnd' + ' '  + str(c)
+            # x = 'n' + str(p[0] // minWidth)
+            # y = 'n' + str(p[1] // minHeight)
+            file.write(curr + '\n')
+            file.write(cap + '\n')
+            num += 1
+
+def addVoltageSource(file):
+    file.write('*pdn\n')
+    pdn = 'iin nn0 gnd -1e3\nRp0 nn0 gnd 1e-3\nRp1 nn0 nn01 10e-3\nLp1 nn01 nn02 1e-9\nCp1 nn02 0 1000e-6\nRp2 nn0 nn1 1e-3\nLp2 nn1 nn2 10e-9\n' + \
+            'Rp3 nn2 nn21 12e-3\nLp3 nn21 nn22 500e-12\nCp3 nn22 0 25e-6\nRp4 nn2 nn3 1e-3\nLp4 nn3 nn4 200e-12\n' + \
+            'Rp5 nn4 nn41 15e-3\nLp5 nn41 nn42 100e-12\nCp5 nn42 0 500e-9\nRp6 nn4 nn5 1e-3\nLp6 nn5 nn6 30e-9\n' + \
+            'Rp7 nn6 n1 5e-3\nCp7 n1 0 1e-9\n'
+    file.write(pdn)
+    file.write('*voltage source\n')
+    # formation in {pad:[voltage, resistance, inductance]}
+    # vsrc = {'n1':[1, 1.25, 1e-9]}
+    vsrc = {}
+    i = 0
+    for k in vsrc.keys():
+        v, r, l = vsrc[k]
+        index = str(i)
+        lines = 'iv_' + index + ' x_' + index + ' gnd ' + str(-v/r) + '\n' \
+                + 'r_pad_' + index + ' x_' + index + ' gnd ' + str(r) + '\n' \
+                + 'l_pad_' + index + ' x_' + index + ' ' + k + ' ' + str(l) + '\n'
+        file.write(lines)
+
+def netlistGenerator(pwrPin, nodeNumX, nodeNumY, dimension):
+    # minWidth, minHeight, pgX, pgY = getPgDimension(pwrPin)
+    # nodeNumX, nodeNumY = int(pgX // minWidth), int(pgY // minHeight)
+    with open('pgNet.sp', 'w') as file:
+        # horizontal
+        for i in range(nodeNumY):
+            y = i * nodeNumX + 1
+            for j in range(nodeNumX - 1):
+                x = i * (nodeNumX - 1) + j + 1
+                comp = ''
+                comp += 'r' + str(x) + ' ' # type
+                comp += 'n' + str(y) + ' ' + 'n' + str(y + 1) + ' '# num
+                comp += '0.25' # value
+                y += 1
+                file.write(comp + '\n')
+        # vertical
+        for i in range(nodeNumY - 1):
+            y = i * nodeNumX + 1
+            for j in range(nodeNumX):
+                x = i * nodeNumX + j + 1 + nodeNumY * (nodeNumX - 1)
+                comp = ''
+                comp += 'r' + str(x) + ' ' # type
+                comp += 'n' + str(y) + ' ' + 'n' + str(y + nodeNumX) + ' '# num
+                comp += '0.25'# value
+                y += 1
+                file.write(comp + '\n')
+        addCurrentSource(file, pwrPin, nodeNumX, nodeNumY, dimension)
+        addVoltageSource(file)
+        # simulation options
+        file.write('*simulation options\n')
+        file.write('.tran 0 2e-6 0.001e-6\n')
+        file.write('.probe n1\n')
+
+def getCapBudget(pwrPin):
+    cycleTime = 10e-6
+    tox = 200e-6 # thickness of dielectric
+    dielectric = 3.9
+    cox = dielectric / tox
+    vlim = 10 # maximal supply noise
+    # theta = max(1, v[k] / vlim)
+    decapBudget = {}
+    for k in pwrPin.keys():
+        pins = pwrPin[k]
+        # the assumed cycle time is 20us, so the width of triangle waveform is 10us
+        decapBudget[k] = []
+        for p in pins:
+            current = p[2]
+            charge = cycleTime * current / 2
+            budget = charge / vlim
+            decapBudget[k].append(budget)
+    return decapBudget
+
 def addDecap(design, load, dimension):
     np.set_printoptions(threshold=np.nan)
     layoutX, layoutY = dimension

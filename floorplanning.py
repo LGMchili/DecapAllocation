@@ -12,6 +12,7 @@ def readDesign(file):
         nameMap = {}
         modules = {}
         load = {}
+        pwrPin = {}
         for line in file:
             line = line.strip()
             line = re.sub(';', '', line)
@@ -19,10 +20,12 @@ def readDesign(file):
             if(line.startswith('MODULE')):
                 name = line.split()[1]
                 load[name] = 0
+                pwrPin[name] = []
             if('CURRENT' in words):
                 index = words.index('CURRENT')
                 current = float(words[index + 1])
                 load[name] += current
+                pwrPin[name].append([float(words[2]), float(words[3]), current])
             if(line.startswith('DIMENSIONS')):
                 cords = line.split()[1:]
                 width = float(cords[0])
@@ -31,7 +34,11 @@ def readDesign(file):
                 mappedName = str(len(nameMap) + 11)
                 nameMap[mappedName] = name
                 modules[mappedName] = [width, height]
-    return modules, nameMap, load
+    #             if(name == 'bound'):
+    #                 del nameMap[mappedName]
+    #                 del modules[mappedName]
+    # del load['bound']
+    return modules, nameMap, load, pwrPin
 
 def rotateModules(module):
     # add rotated rects to list
@@ -86,10 +93,11 @@ def getRotatedModules(seq, module):
         if(r.endswith('_')):
             name = r[:-1]
             module[name][0], module[name][1] = module[name][1], module[name][0]
+    return result
 
 def getDesign(seq, module):
     rects = copy.deepcopy(module)
-    getRotatedModules(seq, rects)
+    rotationMap = getRotatedModules(seq, rects)
     stack = []
     pack = {}
     whiteSpace = []
@@ -130,7 +138,7 @@ def getDesign(seq, module):
             stack.append(m)
     design = pack[m1+m2]
     dimension = rects[m1+m2]
-    return design, dimension
+    return design, dimension, rotationMap
 
 def plotLayout(seq, module):
     design, dimension = getDesign(seq, module)
@@ -256,11 +264,11 @@ def genInitialSolution(module):
     for k in keys:
         E.append(k)
         if(i >= 1):
-            E.append('V')
-            # if(random.uniform(0, 1) > 0.5):
-            #     E.append('V')
-            # else:
-            #     E.append('H')
+            # E.append('V')
+            if(random.uniform(0, 1) > 0.5):
+                E.append('V')
+            else:
+                E.append('H')
         i += 1
     return E
 
@@ -272,21 +280,22 @@ def sa(module, op = 'hide'):
     Ebest = E
     best_cost = calculateCost(E, rotatedModules)
     iter = 0
-    T = 100000000 # initial temperature
+    T = 1000000000 # initial temperature
     r = 0.85 # reduce ratio
     epsilon = 1 # minimal temperature
-    max_iteration = 10*l # max iterator at each time
+    max_iteration = 5*l # max iterator at each time
     reject = 0
     result.append(best_cost)
     # solving
     while(reject / max_iteration < 0.95 and T > epsilon):
         reject = 0
+        E = Ebest
         for iter in range(max_iteration):
             dice = random.randint(1, 3)
             newE = getNeighborhoodStructure(E, dice)
             new_cost  = calculateCost(newE, rotatedModules)
             delta_cost = new_cost - calculateCost(E, rotatedModules)
-            if(delta_cost <= 0 or random.uniform(0, 1) < math.exp(-delta_cost / T)):
+            if(delta_cost <= 0 or random.uniform(0, 0.5) < math.exp(-delta_cost / T)):
                 result.append(new_cost)
                 E = newE
                 if(new_cost < best_cost):
@@ -314,7 +323,26 @@ def rectsToDict(rects, nameMap):
             design[nameMap[r[4]]] = [r[0], r[1], r[2], r[3]]
     return design
 
-def plotDesign(design, dimension, op = 'moduleOnly'):
+def placePin(design, pwrPin, nameMap, rotationMap):
+    """
+    add offset to pwrPin
+    """
+    # the pins need to be rotated if the module is rotated
+    for r in rotationMap:
+        if(r.endswith('_')):
+            name = nameMap[r[:-1]]
+            for p in pwrPin[name]:
+                p[0], p[1] = p[1], p[0]
+    for key in design.keys():
+        if(key == 'ws'):
+            continue
+        rect = design[key]
+        pins = pwrPin[key]
+        for pin in pins:
+            pin[0] += rect[2]
+            pin[1] += rect[3]
+
+def plotDesign(design, dimension, op = 'moduleOnly', pwrPin = {}):
     chip_x, chip_y = dimension
     fig = plt.figure()
     ax = fig.add_subplot(1,1,1)
@@ -333,6 +361,9 @@ def plotDesign(design, dimension, op = 'moduleOnly'):
             w = patches.Rectangle((rect[2],rect[3]),rect[0],rect[1],linewidth=1,edgecolor='black',facecolor='r')
             ax.text(rect[2]+0.5*rect[0], rect[3]+0.5*rect[1], key, horizontalalignment="center", verticalalignment='center')
             ax.add_patch(w)
+            pins = pwrPin[key]
+            for pin in pins:
+                plt.plot(pin[0], pin[1], 'bo', markersize=5)
     plt.show()
 
 def decode(seq):
@@ -353,7 +384,7 @@ def decode(seq):
     return result
 # fp = ['1','2','H','3','4','H','5','H','V']
 if __name__ == '__main__':
-    modules, nameMap, load = readDesign('./ami33.txt')
+    modules, nameMap, load = readDesign('./ami49.txt')
     # print(nameMap)
     # print(modules)
     # modules = {'1':[4,6], '2':[4,4], '3':[4,3], '4':[4,4], '5':[4,3]} # rect in (width, height), for test only
